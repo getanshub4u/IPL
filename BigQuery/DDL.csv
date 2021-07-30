@@ -1,0 +1,969 @@
+table_name,ddl
+vw_ipl_bowler,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler`
+AS with set_d as (
+select d.bowler,d.match_id,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.match_id)
+select d.*,m.maiden,ifnull(s.set_wckts,0) set_d from (
+select 
+bowler,match_id,batting_team,bowling_team,innings,
+sum(dot_ball) dots,
+sum(fours) fours,
+sum(sixes) sixes,
+sum(ind_runs) runs,
+count(wides) wides,
+count(noballs) noballs,
+count(ball_num)-count(wides)-count(noballs) balls,
+cast( `my-ipl-data.IPL_DATA`.tobase6(count(ball_num)-count(wides)-count(noballs)) as numeric)/10 overs,
+case when (count(ball_num)-count(wides)-count(noballs)) =0 then 0 else
+round(6*sum(runs_off_bat)/(count(ball_num)-count(wides)-count(noballs)),2) end economy,
+count(ind_wckt) wickets,
+case when count(ind_wckt)=0 and (count(ball_num)-count(wides)-count(noballs)) between 12 and 23 then 1 else 0 end two_wcktlss,
+case when count(ind_wckt)=0 and (count(ball_num)-count(wides)-count(noballs)) =24 then 1 else 0 end four_wcktlss
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d  where innings<3 group by d.bowler,d.match_id,batting_team,bowling_team,innings) d left join
+(select bowler,match_id,count(distinct over_num) maiden from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3 
+group by bowler,match_id,over_num having sum(ind_runs)=0 and count(over_num)=6) m
+ on d.bowler=m.bowler and d.match_id=m.match_id
+ left join set_d s on s.bowler=d.bowler and s.match_id=d.match_id
+
+
+
+;"
+vw_ipl_bowler_set_dismissal_batsman,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_set_dismissal_batsman`
+AS select d.bowler,d.striker,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.striker;"
+IPL_DETAIL,"CREATE TABLE `my-ipl-data.IPL_DATA.IPL_DETAIL`
+(
+  match_id INT64,
+  season STRING,
+  start_date DATE,
+  venue STRING,
+  innings INT64,
+  ball FLOAT64,
+  batting_team STRING,
+  bowling_team STRING,
+  striker STRING,
+  non_striker STRING,
+  bowler STRING,
+  runs_off_bat INT64,
+  extras INT64,
+  wides INT64,
+  noballs INT64,
+  byes INT64,
+  legbyes INT64,
+  penalty INT64,
+  wicket_type STRING,
+  player_dismissed STRING,
+  other_wicket_type STRING,
+  other_player_dismissed STRING
+);"
+vw_ipl_bowler_inn_brkdwn_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_inn_brkdwn_overall`
+AS   with blr_brk as (
+select match_id,innings,
+bowler,batting_team against,runs_off_bat,wides,noballs,ipl_year,ind_runs,
+ind_wckt,
+case 
+when cast (over_num as numeric) <6 then '1-6'
+when cast (over_num as numeric) between 6 and 13 then '7-13'
+else '14-20'
+end brkdwn,
+dot_ball,
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3),
+summ_brk as (select 
+bowler,brkdwn,
+sum(ind_runs) runs,
+count(ind_wckt) wickets, 
+count(distinct match_id) matches,
+count(*)-count(wides)-count(noballs) balls,
+sum(dot_ball) dot_balls,
+round(100*sum(dot_ball)/(count(*)-count(wides)-count(noballs)),2) dot_ball_pct
+from blr_brk b
+group by bowler,brkdwn)
+select s.*,
+trunc(balls/6)+ mod(balls,6)/10 as overs,
+case when (trunc(balls/6)+ mod(balls,6)/10) >=1 then round(runs/ (trunc(balls/6)+ mod(balls,6)/10),2) else 0 end as econ
+from summ_brk s;
+
+;"
+vw_ipl_bowler_set_dismissal_inn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_set_dismissal_inn`
+AS select d.bowler,d.innings,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.innings;
+
+
+;"
+vw_ipl_batsmen_milestone_team,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_milestone_team`
+AS with tmp as(
+     select m.batsman,m.milestone,d.bowling_team,round(avg(balls_num)) balls_num ,count(*) inns
+ from `my-ipl-data.IPL_DATA.vw_ipl_batsmen_milestone` m , (select distinct match_id,ipl_year,batting_team,bowling_team from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`) d
+ where m.match_id=d.match_id group by m.batsman,m.milestone,d.bowling_team
+ order by d.bowling_team,m.batsman,m.milestone
+)
+SELECT m.*, 
+case milestone 
+    when 1 then round(3000/m.balls_num,2)
+    when 2 then round(2000/m.balls_num,2)
+    else round(5000/m.balls_num,2) end SR
+ FROM tmp m 
+ where balls_num>0
+ order by bowling_team,batsman,milestone
+;"
+vw_ipl_bowler_year,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_year`
+AS SELECT bowler,ipl_year,b.bowling_team,
+case sum(wickets) 
+    when 0 then 0
+    else round(sum(runs)/sum(wickets),2) 
+end bowl_avg,
+count(*) innings, 
+sum(runs) RUNS, 
+sum(wickets) wickets, 
+sum(two_wcktlss) two_wcktlss,
+sum(four_wcktlss) four_wcktlss,
+case when (trunc(sum(balls)/6)+mod(sum(balls),6)/10) <1 then 0
+        else round(sum(runs)/(trunc(sum(balls)/6)+mod(sum(balls),6)/10),2) 
+end bowl_econ,
+      trunc(sum(balls)/6)+mod(sum(balls),6)/10  overs,
+       sum(
+        CASE
+        WHEN wickets = 4 THEN
+            1
+        ELSE
+            0
+    END) four_w,
+    sum(dots) dots,
+sum(case when wickets = 5 then 1 else 0 end) five_w,
+ifnull(sum(maiden),0) maidens,
+case when sum(wickets) =0 then 0
+        else round(sum(balls)/sum(wickets),2) end SR,
+        round(100*(sum(dots)/sum(balls)),2) dot_ball_pct
+FROM
+    `my-ipl-data.IPL_DATA.vw_ipl_bowler`  b , (select distinct match_id,ipl_year from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` ) d 
+ where b.match_id=d.match_id
+     group by bowler,ipl_year,b.bowling_team
+
+;"
+vw_ipl_bat_team_ovbrk_detail,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bat_team_ovbrk_detail`
+AS select b.*,d.ipl_year,d.innings from `my-ipl-data.IPL_DATA.vw_ipl_bat_team_ov_brkdwn` b , (select distinct match_id,ipl_year,batting_team,innings from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` ) d
+where b.match_id=d.match_id and b.batting_team=d.batting_team;"
+vw_ipl_batsmen_inn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_inn`
+AS SELECT batsman,
+count(*) innings, 
+innings inning_type,
+sum(not_out) NOT_OUT, sum(runs) RUNS, max(runs) HS, 
+case (count(*)-sum(not_out)) 
+    when 0 then 0 
+else
+    round(sum(runs)/(count(*)-sum(not_out)),2)
+end as average, 
+sum(balls_faced) balls_faced, 
+case sum(balls_faced) 
+    when 0 then 0
+else
+    round(100*sum(runs)/sum(balls_faced),2)
+end as strike_rate, 
+count(century) century, 
+count(half_century) half_century,
+sum(dots) dot_balls,
+sum(fours) fours,sum(sixes) sixes,
+case when sum(thirty_plus)=0 then 0 else
+round(100*(count(half_century)+count(century))/sum(thirty_plus),2) end conv_rate
+
+ FROM `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+ group by batsman,b.innings;"
+vw_ipl_bat_vs_bowl_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bat_vs_bowl_overall`
+AS with set_d as (
+select d.bowler,d.striker,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.innings,d.striker)
+select summ.* ,ifnull(d.set_wckts,0) set_d ,
+ case when balls =0 then 0 else round(100*runs/balls,2) end SR
+from 
+(
+select 
+striker batsman, bowler,count(distinct match_id) times_faced, sum(runs_off_bat) runs, count(*)-count(wides)-count(noballs) balls, sum(case when runs_off_bat=0 then 1 else 0 end) dot_balls,
+sum(fours ) fours,
+sum(sixes ) sixes, 
+count(ind_wckt) DISMISSED
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`
+where innings<3
+group by striker, bowler) summ left join set_d d on 
+summ.batsman = d.striker and summ.bowler=d.bowler 
+;"
+vw_ipl_batsmen,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen`
+AS select 
+striker batsman,match_id,batting_team,bowling_team,innings,
+count(ball_num) balls,
+sum(dot_ball) dots,sum(fours) fours,sum(sixes) sixes,sum(runs_off_bat) runs,
+if(
+    count(
+    case when striker=player_dismissed then 1 else null end
+)=0,1,0) not_out,
+if(sum(runs_off_bat)>99,1,null) century,
+if(sum(runs_off_bat)>=50 and sum(runs_off_bat)<=99 ,1,null) half_century,
+count(ball_num)-count(wides)-count(noballs) balls_faced,
+case when (count(ball_num)-count(wides)-count(noballs)) =0 then 0 else
+round(100*sum(runs_off_bat)/(count(ball_num)-count(wides)-count(noballs)),2) end strike_rate,
+case when sum(runs_off_bat) >29 then 1 else 0 end thirty_plus 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3
+group by striker,match_id,batting_team,bowling_team,innings;"
+vw_ipl_bat_team_ov_brkdwn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bat_team_ov_brkdwn`
+AS select d.batting_team,1 ov,d.match_id, count(d.wicket_type) wckts_lost,sum(d.tot_runs) runs, sum(d.fours) fours,sum(d.sixes) sixes , 
+count(*)-count(d.wides)-count(d.noballs) balls,sum(d.dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d where cast(d.over_num as numeric)<6 and d.innings<3
+group by d.batting_team,d.match_id 
+union all 
+select d.batting_team,2 ov,d.match_id, count(d.wicket_type) wckts_lost,sum(d.tot_runs) runs , sum(d.fours) fours,sum(d.sixes) sixes , 
+count(*)-count(d.wides)-count(d.noballs) balls,sum(d.dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d where cast(d.over_num as numeric) between 6 and 15
+group by d.batting_team ,d.match_id
+union all
+select d.batting_team,3 ov,d.match_id, count(d.wicket_type) wckts_lost,sum(d.tot_runs) runs , sum(d.fours) fours,sum(d.sixes) sixes , 
+count(*)-count(d.wides)-count(d.noballs) balls,sum(d.dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d where cast(d.over_num as numeric) >15
+group by d.batting_team ,d.match_id;"
+vw_ipl_bowler_set_dismissal_team,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_set_dismissal_team`
+AS select d.bowler,d.batting_team,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.batting_team;
+
+
+;"
+IPL_DETAIL_INT,"CREATE TABLE `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`
+(
+  match_id INT64,
+  city STRING,
+  ipl_year INT64,
+  match_date DATE,
+  innings INT64,
+  ball FLOAT64,
+  over_num STRING,
+  ball_num STRING,
+  batting_team STRING,
+  bowling_team STRING,
+  striker STRING,
+  non_striker STRING,
+  bowler STRING,
+  runs_off_bat INT64,
+  extras INT64,
+  wides INT64,
+  noballs INT64,
+  byes INT64,
+  legbyes INT64,
+  dot_ball INT64,
+  fours INT64,
+  sixes INT64,
+  ind_runs INT64,
+  tot_runs INT64,
+  penalty INT64,
+  wicket_type STRING,
+  ind_wckt STRING,
+  player_dismissed STRING
+);"
+VW_IPL_BATSMEN_PARTNERSHIP_DETAIL,"CREATE VIEW `my-ipl-data.IPL_DATA.VW_IPL_BATSMEN_PARTNERSHIP_DETAIL`
+AS   with partnership as (
+select match_id,ipl_year,innings,batting_team home_team,
+least(striker, non_striker) bt1, greatest(striker, non_striker) bt2,sum(runs_off_bat+extras) runs,count(ball) balls,
+bowling_team against,max (case when wicket_type is null then wicket_type else bowler end) broken_by
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d
+where innings<3
+group by match_id,ipl_year,innings,batting_team,least(striker, non_striker), greatest(striker, non_striker),bowling_team
+),
+partnr as(
+select match_id,innings,striker,non_striker,sum(runs_off_bat) runs,count(ball)-count(wides)-count(noballs) balls 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where 
+innings<3
+group by match_id,innings,striker,non_striker
+)
+select --p.match_id,
+pt.ipl_year,p.innings,pt.home_team,p.striker batsman1,p.runs runs1,p.balls balls1,p.non_striker batsman2,q.runs runs2,q.balls balls2,pt.runs tot_runs,pt.balls tot_balls,
+pt.against,ifnull(pt.broken_by,'Unbroken') broken_by
+from partnr p, partnr q, partnership pt
+where p.match_id=q.match_id
+and p.match_id=pt.match_id
+and p.striker=q.non_striker and p.non_striker=q.striker
+and pt.match_id=p.match_id and pt.bt1=p.striker
+and pt.bt2=p.non_striker;
+;"
+vw_ipl_batsmen_milestone_year,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_milestone_year`
+AS with tmp as(
+     select m.batsman,m.milestone,d.ipl_year,round(avg(balls_num)) balls_num ,count(*) inns
+ from `my-ipl-data.IPL_DATA.vw_ipl_batsmen_milestone` m , (select distinct match_id,ipl_year,batting_team,bowling_team from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`) d
+ where m.match_id=d.match_id group by m.batsman,m.milestone,d.ipl_year
+ order by d.ipl_year,m.batsman,m.milestone
+)
+SELECT m.*, 
+case milestone 
+    when 1 then round(3000/m.balls_num,2)
+    when 2 then round(2000/m.balls_num,2)
+    else round(5000/m.balls_num,2) end SR
+ FROM tmp m 
+ where balls_num>0
+ order by ipl_year,batsman,milestone
+;"
+IPL_VENUE,"CREATE TABLE `my-ipl-data.IPL_DATA.IPL_VENUE`
+(
+  VENUE STRING,
+  CITY STRING
+);"
+vw_ipl_batsmen_inn_brkdwn_inn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_inn_brkdwn_inn`
+AS SELECT  batsman,
+count(*) innings, 
+inn_brkdwn,
+innings inning_type,
+sum(not_out) NOT_OUT, sum(runs) RUNS, max(runs) HS, 
+case (count(*)-sum(not_out)) 
+    when 0 then 0 
+else
+    round(sum(runs)/(count(*)-sum(not_out)),2)
+end as average, 
+sum(balls_faced) balls_faced, 
+case sum(balls_faced) 
+    when 0 then 0
+else
+    round(100*sum(runs)/sum(balls_faced),2)
+end as strike_rate, 
+count(century) century, 
+count(half_century) half_century,
+sum(dots) dot_balls,
+sum(fours) fours,sum(sixes) sixes
+
+ FROM `my-ipl-data.IPL_DATA.vw_ipl_batsmen_match_inn_brkdwn` b
+ group by batsman,b.innings,
+ inn_brkdwn;"
+VW_IPL_BATSMEN_YEAR,"CREATE VIEW `my-ipl-data.IPL_DATA.VW_IPL_BATSMEN_YEAR`
+AS SELECT batsman,b.batting_team,
+count(*) innings, 
+d.ipl_year ,
+sum(not_out) NOT_OUT, sum(runs) RUNS, max(runs) HS, 
+case (count(*)-sum(not_out)) 
+    when 0 then 0 
+else
+    round(sum(runs)/(count(*)-sum(not_out)),2)
+end as average, 
+sum(balls_faced) balls_faced, 
+case sum(balls_faced) 
+    when 0 then 0
+else
+    round(100*sum(runs)/sum(balls_faced),2)
+end as strike_rate, 
+count(century) century, 
+count(half_century) half_century,
+sum(dots) dot_balls,
+sum(fours) fours,sum(sixes) sixes,
+case when sum(thirty_plus)=0 then 0 else
+round(100*(count(half_century)+count(century))/sum(thirty_plus),2) end conv_rate
+
+ FROM `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b, (select distinct match_id,ipl_year from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` ) d 
+ where b.match_id=d.match_id
+ group by batsman,d.ipl_year,b.batting_team;"
+vw_ipl_batsmen_milestone_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_milestone_overall`
+AS with tmp as(
+     select m.batsman,m.milestone,round(avg(balls_num)) balls_num ,count(*) inns
+ from `my-ipl-data.IPL_DATA.vw_ipl_batsmen_milestone` m 
+  group by m.batsman,m.milestone
+ order by m.batsman,m.milestone
+)
+SELECT m.*, 
+case milestone 
+    when 1 then round(3000/m.balls_num,2)
+    when 2 then round(2000/m.balls_num,2)
+    else round(5000/m.balls_num,2) end SR
+ FROM tmp m 
+ where balls_num>0
+ order by batsman,milestone
+;"
+vw_ipl_bowler_innings,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_innings`
+AS SELECT bowler,innings inning_type,
+case sum(wickets) 
+    when 0 then 0
+    else round(sum(runs)/sum(wickets),2) 
+end bowl_avg,
+count(*) innings, 
+sum(runs) RUNS, 
+sum(wickets) wickets, 
+sum(two_wcktlss) two_wcktlss,
+sum(four_wcktlss) four_wcktlss,
+case when (trunc(sum(balls)/6)+mod(sum(balls),6)/10) <1 then 0
+        else round(sum(runs)/(trunc(sum(balls)/6)+mod(sum(balls),6)/10),2) 
+end bowl_econ,
+      trunc(sum(balls)/6)+mod(sum(balls),6)/10  overs,
+       sum(
+        CASE
+        WHEN wickets = 4 THEN
+            1
+        ELSE
+            0
+    END) four_w,
+    sum(dots) dots,
+sum(case when wickets = 5 then 1 else 0 end) five_w,
+ifnull(sum(maiden),0) maidens,
+case when sum(wickets) =0 then 0
+        else round(sum(balls)/sum(wickets),2) end SR,
+        round(100*(sum(dots)/sum(balls)),2) dot_ball_pct
+FROM
+    `my-ipl-data.IPL_DATA.vw_ipl_bowler`  b
+     group by bowler,b.innings
+
+;"
+vw_ipl_venue_batsman_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_venue_batsman_overall`
+AS select city,striker batsman,sum(runs_off_bat) runs,count(distinct match_id) inns
+,sum(fours) fours,sum(sixes) sixes, count(*)-count(wides)-count(noballs) balls,sum(dot_ball) dots,
+    count(
+    case when striker=player_dismissed then 1 else null end
+) out,
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3
+group by city,striker;"
+vw_ipl_venue_ovbrkdwn_detail,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_venue_ovbrkdwn_detail`
+AS select match_id,city venue,sum(tot_runs) runs,batting_team,innings,ipl_year,count(wicket_type) wckts,1 ov 
+,sum(fours) fours,sum(sixes) sixes, count(*)-count(wides)-count(noballs) balls,sum(dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3
+and cast(over_num as numeric) <6
+group by match_id,city,batting_team,innings,ipl_year
+union all 
+select match_id,city venue,sum(tot_runs) runs,batting_team,innings,ipl_year,count(wicket_type) wckts,2 ov 
+,sum(fours) fours,sum(sixes) sixes, count(*)-count(wides)-count(noballs) balls,sum(dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`
+where cast(over_num as numeric) between 6 and 15
+group by match_id,city,batting_team,innings,ipl_year
+union all 
+select match_id,city venue,sum(tot_runs) runs,batting_team,innings,ipl_year,count(wicket_type) wckts,3 ov 
+,sum(fours) fours,sum(sixes) sixes, count(*)-count(wides)-count(noballs) balls,sum(dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`
+where cast(over_num as numeric) > 15
+group by match_id,city,batting_team,innings,ipl_year;"
+vw_ipl_detail,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_detail`
+AS SELECT 
+match_id,
+extract(year from start_date) ipl_year,
+start_date match_date,
+venue,
+innings,
+ball,
+substr(cast(ball as string),0,instr( cast(ball as string),'.')-1) over_num,
+substr(cast(ball as string),instr( cast(ball as string),'.')+1) ball_num,
+CASE batting_team
+when 'Delhi Daredevils' then 'Delhi Capitals'
+when 'Punjab Kings' then 'Kings XI Punjab'
+when 'Rising Pune Supergiant' then 'Rising Pune Supergiants'
+when 'Pune Warriors' then 'Rising Pune Supergiants'
+else batting_team end batting_team,
+CASE bowling_team
+when 'Delhi Daredevils' then 'Delhi Capitals'
+when 'Punjab Kings' then 'Kings XI Punjab'
+when 'Rising Pune Supergiant' then 'Rising Pune Supergiants'
+when 'Pune Warriors' then 'Rising Pune Supergiants'
+else bowling_team end bowling_team,
+striker,
+non_striker,
+bowler,
+runs_off_bat,
+extras,
+wides,
+noballs,
+byes,
+legbyes,
+if (runs_off_bat =0 and wides is null and noballs is null,1,0 ) dot_ball,
+if (runs_off_bat =4,1,0  ) fours,
+if (runs_off_bat =6,1,0  ) sixes,
+runs_off_bat + IFNULL(wides, 0) +IFNULL(noballs, 0) ind_runs,
+runs_off_bat + extras tot_runs,
+penalty,
+wicket_type,
+case WICKET_TYPE
+when 'retired hurt'then NULL
+when 'obstructing the field'then NULL
+when 'run out'then NULL
+else WICKET_TYPE end ind_wckt,
+player_dismissed
+FROM `my-ipl-data.IPL_DATA.IPL_DETAIL`;"
+vw_ipl_batsmen_cuml_runs,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_cuml_runs`
+AS select innings,striker batsman,match_id, sum(runs_off_bat) 
+over (
+    partition by innings,match_id,striker
+    order by ball
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) AS runs,
+count(case 
+when noballs is not null
+then null else 1
+end)
+over (
+    partition by innings,match_id,striker
+    order by ball
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) AS balls,
+
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3
+and wides is null
+
+;"
+vw_ipl_batsman_dismissal,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsman_dismissal`
+AS select player_dismissed batsman, ipl_year,match_id, 
+case when wicket_type = 'run out' then 1 end ro ,
+case when wicket_type like '%caught%' then 1 end cgt ,
+case when wicket_type = 'lbw' then 1 end lbw ,
+case when wicket_type = 'bowled' then 1 end bwld,
+case when wicket_type = 'stumped' then 1 end stmp 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where 
+wicket_type is not null;"
+vw_ipl_venue_yr,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_venue_yr`
+AS select venue,innings,ipl_year,
+max(runs) HT,round(avg(runs)) runs, round(avg(6*runs/balls ),2) rr, round(avg(sixes)) sixes, round(avg(fours)) fours, round(avg(100*dots/balls)) dot_pct, min(runs) LT, round(avg(wckts)) wckts
+ from (
+select venue,ipl_year, match_id,sum(runs) runs,innings,batting_team,sum(balls) balls ,sum(fours) fours,sum(sixes) sixes,sum(dots) dots,sum(wckts) wckts
+from `my-ipl-data.IPL_DATA.vw_ipl_venue_ovbrkdwn_detail` group by venue,match_id,innings,batting_team,ipl_year)
+group by venue,innings,ipl_year;"
+vw_ipl_bowl_team_ovbrk_detail,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowl_team_ovbrk_detail`
+AS select b.*,d.ipl_year,d.innings from `my-ipl-data.IPL_DATA.vw_ipl_bowl_team_ov_brkdwn` b , 
+(select distinct match_id,ipl_year,bowling_team,innings from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` ) d
+where b.match_id=d.match_id and b.bowling_team=d.bowling_team;"
+vw_ipl_bowler_set_dismissal_yr,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_set_dismissal_yr`
+AS select d.bowler,d.ipl_year,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.ipl_year;
+
+
+;"
+vw_ipl_batsmen_match_inn_brkdwn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_match_inn_brkdwn`
+AS select 
+striker batsman,match_id,batting_team,innings,
+case when cast(OVER_NUM as numeric) <6 then'0-6'
+when cast(OVER_NUM as numeric)>=6 AND cast(OVER_NUM as numeric)<14 then '6-14'
+ else '14-20' end inn_brkdwn,
+count(ball_num) balls,
+sum(dot_ball) dots,sum(fours) fours,sum(sixes) sixes,sum(runs_off_bat) runs,
+if(
+    count(
+    case when striker=player_dismissed then 1 else null end
+)=0,1,0) not_out,
+if(sum(runs_off_bat)>99,1,null) century,
+if(sum(runs_off_bat)>=50 and sum(runs_off_bat)<=99 ,1,null) half_century,
+count(ball_num)-count(wides)-count(noballs) balls_faced,
+case when (count(ball_num)-count(wides)-count(noballs)) =0 then 0 else
+round(100*sum(runs_off_bat)/(count(ball_num)-count(wides)-count(noballs)),2) end strike_rate
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3
+group by striker,match_id,batting_team,innings,
+case when cast(OVER_NUM as numeric) <6 then'0-6'
+when cast(OVER_NUM as numeric)>=6 AND cast(OVER_NUM as numeric)<14 then '6-14'
+ else '14-20' end;"
+vw_ipl_batsmen_run_race,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_run_race`
+AS WITH st_end_dt AS
+  (
+      select ipl_year,GENERATE_DATE_ARRAY(min(match_date) ,max(match_date)) as dt   from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` group by ipl_year
+   ),
+top_bt as (
+SELECT
+  batsman,
+  ipl_year,
+  ROW_NUMBER() OVER (PARTITION BY ipl_year ORDER BY RUNS DESC) AS bt_rank
+FROM
+ `my-ipl-data.IPL_DATA.VW_IPL_BATSMEN_YEAR`),
+yr_dt as (
+SELECT ipl_year,flattened_dates
+FROM st_end_dt
+CROSS JOIN UNNEST(st_end_dt.dt) AS flattened_dates),
+final as(
+   select yr_dt.flattened_dates,top_bt.* from yr_dt , top_bt where yr_dt.ipl_year=top_bt.ipl_year and top_bt.bt_rank <=30
+)
+SELECT distinct dt.ipl_year,dt.flattened_dates match_date,dt.batsman,b.runs FROM final dt left join
+(select distinct match_id,match_date from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`) d on d.match_date=dt.flattened_dates
+left join `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b on b.match_id=d.match_id and b.batsman=dt.batsman
+;"
+vw_ipl_bat_vs_bowl_inn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bat_vs_bowl_inn`
+AS with set_d as (
+select d.bowler,d.innings,d.striker,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.innings,d.striker)
+select summ.* ,ifnull(d.set_wckts,0) set_d , case when balls =0 then 0 else round(100*runs/balls,2) end SR
+from 
+(
+select 
+innings,striker batsman, bowler,count(distinct match_id) times_faced, sum(runs_off_bat) runs, 
+count(*)-count(wides)-count(noballs) balls, sum(case when runs_off_bat=0 then 1 else 0 end) dot_balls,
+sum(fours ) fours,
+sum(sixes ) sixes, 
+count(ind_wckt) DISMISSED
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`
+where innings<3
+group by innings,striker, bowler) summ left join set_d d on 
+summ.batsman = d.striker and summ.bowler=d.bowler and summ.innings=d.innings
+;;"
+vw_ipl_batsmen_milestone,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_milestone`
+AS select innings,batsman,match_id,milestone,balls,
+      balls - lag(balls,1,0) over (PARTITION BY match_id ,innings,batsman order by milestone,balls asc)  balls_num
+from (
+select 
+innings,batsman,match_id,min(balls) balls,milestone
+from (
+    select * from `my-ipl-data.IPL_DATA.vw_ipl_batsmen_cuml_runs`
+),
+(select 30 mark, 1 milestone
+union all
+select 50 mark, 2 milestone
+union all
+select 100 mark, 3 milestone
+) milestones
+where  runs >= milestones.mark 
+group by innings,batsman,match_id,milestone order by 
+match_id ,innings,batsman,milestone);"
+vw_ipl_batsmen_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_overall`
+AS SELECT  batsman,
+count(*) innings, 
+sum(not_out) NOT_OUT, sum(runs) RUNS, max(runs) HS, 
+case (count(*)-sum(not_out)) 
+    when 0 then 0 
+else
+    round(sum(runs)/(count(*)-sum(not_out)),2)
+end as average, 
+sum(balls_faced) balls_faced, 
+case sum(balls_faced) 
+    when 0 then 0
+else
+    round(100*sum(runs)/sum(balls_faced),2)
+end as strike_rate, 
+count(century) century, 
+count(half_century) half_century,
+sum(dots) dot_balls,
+sum(fours) fours,sum(sixes) sixes,
+case when sum(thirty_plus)=0 then 0 else
+round(100*(count(half_century)+count(century))/sum(thirty_plus),2) end conv_rate
+ FROM `my-ipl-data.IPL_DATA.vw_ipl_batsmen` 
+ group by batsman;"
+vw_ipl_batsmen_vs_team,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_vs_team`
+AS   select 
+x.batsman,
+x.bowling_team against,
+count(*) innings, 
+sum(not_out) NOT_OUT, sum(runs) RUNS, max(runs) HS, 
+case (count(*)-sum(not_out)) 
+    when 0 then 0 
+else
+    round(sum(runs)/(count(*)-sum(not_out)),2)
+end as average, 
+sum(balls_faced) balls_faced, 
+case sum(balls_faced) 
+    when 0 then 0
+else
+    round(100*sum(runs)/sum(balls_faced),2)
+end as strike_rate, 
+ifnull(sum(century),0) century, 
+ifnull(sum(half_century),0) half_century, 
+sum(dots) dot_balls,
+sum(fours) fours,sum(sixes) sixes,
+case when sum(thirty_plus)=0 then 0 else
+round(100*(count(half_century)+count(century))/sum(thirty_plus),2) end conv_rate
+from 
+(
+select 
+blr.* from `my-ipl-data.IPL_DATA.vw_ipl_batsmen` blr
+) x
+group by x.batsman,
+x.bowling_team;
+;"
+vw_ipl_batsmen_inn_brkdwn_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_inn_brkdwn_overall`
+AS SELECT  batsman,
+count(*) innings, 
+inn_brkdwn,
+--innings inning_type,
+sum(not_out) NOT_OUT, sum(runs) RUNS, max(runs) HS, 
+case (count(*)-sum(not_out)) 
+    when 0 then 0 
+else
+    round(sum(runs)/(count(*)-sum(not_out)),2)
+end as average, 
+sum(balls_faced) balls_faced, 
+case sum(balls_faced) 
+    when 0 then 0
+else
+    round(100*sum(runs)/sum(balls_faced),2)
+end as strike_rate, 
+count(century) century, 
+count(half_century) half_century,
+sum(dots) dot_balls,
+sum(fours) fours,sum(sixes) sixes
+
+ FROM `my-ipl-data.IPL_DATA.vw_ipl_batsmen_match_inn_brkdwn` b
+ group by batsman,--b.innings,
+ inn_brkdwn;"
+vw_ipl_bowler_inn_brkdwn_year,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_inn_brkdwn_year`
+AS   with blr_brk as (
+select match_id,innings,
+bowler,batting_team against,runs_off_bat,wides,noballs,ipl_year,ind_runs,
+ind_wckt,
+case 
+when cast (over_num as numeric) <6 then '0-6'
+when cast (over_num as numeric) between 6 and 13 then '6-14'
+else '14-20'
+end inn_brkdwn,
+dot_ball,
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3),
+summ_brk as (select 
+bowler,inn_brkdwn,ipl_year,
+sum(ind_runs) runs,
+count(ind_wckt) wickets, 
+count(distinct match_id) matches,
+count(*)-count(wides)-count(noballs) balls,
+sum(dot_ball) dot_balls,
+case when (count(*)-count(wides)-count(noballs)) =0 then 0 else
+round(100*sum(dot_ball)/(count(*)-count(wides)-count(noballs)),2) end dot_ball_pct
+from blr_brk b
+group by bowler,inn_brkdwn,ipl_year)
+select s.*,
+trunc(balls/6)+ mod(balls,6)/10 as overs,
+case when (trunc(balls/6)+ mod(balls,6)/10) >=1 then round(runs/ (trunc(balls/6)+ mod(balls,6)/10),2) else 0 end as econ
+from summ_brk s;
+
+;"
+vw_ipl_venue_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_venue_overall`
+AS select venue,innings,
+max(runs) HT,round(avg(runs)) runs, round(avg(6*runs/balls ),2) rr, round(avg(sixes)) sixes, round(avg(fours)) fours, round(avg(100*dots/balls)) dot_pct, min(runs) LT, round(avg(wckts)) wckts
+ from (
+select venue, match_id,sum(runs) runs,innings,batting_team,sum(balls) balls ,sum(fours) fours,sum(sixes) sixes,sum(dots) dots,sum(wckts) wckts
+from `my-ipl-data.IPL_DATA.vw_ipl_venue_ovbrkdwn_detail` group by venue,match_id,innings,batting_team)
+group by venue,innings;"
+vw_ipl_bowl_team_ov_brkdwn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowl_team_ov_brkdwn`
+AS select d.bowling_team,1 ov,d.match_id, count(d.wicket_type) wckts_lost,sum(d.tot_runs) runs, sum(d.fours) fours,sum(d.sixes) sixes , 
+count(*)-count(d.wides)-count(d.noballs) balls,sum(d.dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d where cast(d.over_num as numeric)<6 and d.innings<3
+group by d.bowling_team,d.match_id 
+union all 
+select d.bowling_team,2 ov,d.match_id, count(d.wicket_type) wckts_lost,sum(d.tot_runs) runs , sum(d.fours) fours,sum(d.sixes) sixes , 
+count(*)-count(d.wides)-count(d.noballs) balls,sum(d.dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d where cast(d.over_num as numeric) between 6 and 15
+group by d.bowling_team ,d.match_id
+union all
+select d.bowling_team,3 ov,d.match_id, count(d.wicket_type) wckts_lost,sum(d.tot_runs) runs , sum(d.fours) fours,sum(d.sixes) sixes , 
+count(*)-count(d.wides)-count(d.noballs) balls,sum(d.dot_ball) dots
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d where cast(d.over_num as numeric) >15
+group by d.bowling_team ,d.match_id;"
+vw_ipl_first_ov,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_first_ov`
+AS with partnership as (
+    select * from (
+select match_id,ipl_year,innings,batting_team home_team,
+least(striker, non_striker) bt1, greatest(striker, non_striker) bt2,sum(runs_off_bat+extras) runs,count(ball) balls,
+bowling_team against,max (case when wicket_type is null then wicket_type else bowler end) broken_by
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d
+where innings<3 and over_num='0'
+group by match_id,ipl_year,innings,batting_team,least(striker, non_striker), greatest(striker, non_striker),bowling_team)
+order by runs desc limit 20
+),
+partnr as(
+select match_id,innings,striker,non_striker,sum(runs_off_bat) runs,count(ball)-count(wides)-count(noballs) balls ,bowler
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where 
+innings<3 and over_num='0'
+group by match_id,innings,striker,non_striker,bowler
+)
+select --p.match_id,
+pt.ipl_year,pt.home_team,p.striker batsman1,p.runs runs1,p.balls balls1,p.non_striker batsman2,ifnull(q.runs,0) runs2,ifnull(q.balls,0) balls2,pt.runs tot_runs,pt.balls tot_balls,p.bowler,
+pt.against
+from partnr p left join partnr q
+on p.match_id=q.match_id and p.striker=q.non_striker and p.non_striker=q.striker
+join partnership pt
+on p.match_id=pt.match_id
+and pt.match_id=p.match_id and pt.bt1=p.striker
+and pt.bt2=p.non_striker
+order by tot_runs desc ;
+;"
+vw_ipl_batsmen_inn_brkdwn_year,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_batsmen_inn_brkdwn_year`
+AS SELECT batsman,
+count(*) innings, 
+inn_brkdwn,
+d.ipl_year,
+count(*)-sum(not_out) DISMISSED, sum(runs) TOT_RUNS, max(runs) MAX_RUNS, 
+case (count(*)-sum(not_out)) 
+    when 0 then 0 
+else
+    round(sum(runs)/(count(*)-sum(not_out)),2)
+end as AVG_RUNS, 
+--sum(balls_faced) balls_faced, 
+case sum(balls_faced) 
+    when 0 then 0
+else
+    round(100*sum(runs)/sum(balls_faced),2)
+end as strike_rate, 
+sum(dots) dot_balls,
+case when sum(balls_faced) =0 then 0 else round(100*sum(dots)/sum(balls_faced),2) end dot_ball_pct,
+sum(fours) fours,sum(sixes) sixes
+
+ FROM `my-ipl-data.IPL_DATA.vw_ipl_batsmen_match_inn_brkdwn` b , (select distinct match_id,ipl_year from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`) d
+ where b.match_id=d.match_id
+ group by batsman,d.ipl_year,
+ inn_brkdwn;"
+vw_ipl_venue_bowler_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_venue_bowler_overall`
+AS select city,bowler,sum(ind_runs) runs,count(distinct match_id) inns
+,sum(fours) fours,sum(sixes) sixes, count(*)-count(wides)-count(noballs) balls,sum(dot_ball) dots,count(ind_wckt) wckts,
+case when count(ind_wckt)=0 and (count(ball_num)-count(wides)-count(noballs)) between 12 and 23 then 1 else 0 end two_wcktlss,
+case when count(ind_wckt)=0 and (count(ball_num)-count(wides)-count(noballs)) >=24 then 1 else 0 end four_wcktlss
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3
+group by city,bowler;"
+vw_ipl_bowler_vs_team,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_vs_team`
+AS SELECT bowler,batting_team,
+case sum(wickets) 
+    when 0 then 0
+    else round(sum(runs)/sum(wickets),2) 
+end bowl_avg,
+count(*) innings, 
+sum(runs) RUNS, 
+sum(wickets) wickets, 
+sum(two_wcktlss) two_wcktlss,
+sum(four_wcktlss) four_wcktlss,
+case when (trunc(sum(balls)/6)+mod(sum(balls),6)/10) <1 then 0
+        else round(sum(runs)/(trunc(sum(balls)/6)+mod(sum(balls),6)/10),2) 
+end bowl_econ,
+      trunc(sum(balls)/6)+mod(sum(balls),6)/10  overs,
+       sum(
+        CASE
+        WHEN wickets = 4 THEN
+            1
+        ELSE
+            0
+    END) four_w,
+    sum(dots) dots,
+sum(case when wickets = 5 then 1 else 0 end) five_w,
+ifnull(sum(maiden),0) maidens,
+case when sum(wickets) =0 then 0
+        else round(sum(balls)/sum(wickets),2) end SR,
+        round(100*(sum(dots)/sum(balls)),2) dot_ball_pct,
+        sum(b.set_d) set_d
+FROM
+    `my-ipl-data.IPL_DATA.vw_ipl_bowler`  b , (select distinct match_id,ipl_year from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` ) d 
+ where b.match_id=d.match_id
+     group by bowler,batting_team
+
+;"
+vw_ipl_bowler_dismissal,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_dismissal`
+AS select bowler , ipl_year,match_id, 
+case when wicket_type like '%caught%' then 1 end cgt ,
+case when wicket_type = 'lbw' then 1 end lbw ,
+case when wicket_type = 'bowled' then 1 end bwld,
+case when wicket_type = 'stumped' then 1 end stmp 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where 
+wicket_type is not null;"
+vw_ipl_bowler_wicket_race,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_wicket_race`
+AS WITH st_end_dt AS
+  (
+      select ipl_year,GENERATE_DATE_ARRAY(min(match_date) ,max(match_date)) as dt   from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` group by ipl_year
+   ),
+top_bt as (
+SELECT
+  bowler,
+  ipl_year,
+  ROW_NUMBER() OVER (PARTITION BY ipl_year ORDER BY wickets DESC) AS bt_rank
+FROM
+ `my-ipl-data.IPL_DATA.vw_ipl_bowler_year`),
+yr_dt as (
+SELECT ipl_year,flattened_dates
+FROM st_end_dt
+CROSS JOIN UNNEST(st_end_dt.dt) AS flattened_dates),
+final as(
+   select yr_dt.flattened_dates,top_bt.* from yr_dt , top_bt where yr_dt.ipl_year=top_bt.ipl_year and top_bt.bt_rank <=30
+)
+SELECT distinct dt.ipl_year,dt.flattened_dates match_date,dt.bowler,b.wickets FROM final dt left join
+(select distinct match_id,match_date from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`) d on d.match_date=dt.flattened_dates
+left join `my-ipl-data.IPL_DATA.vw_ipl_bowler` b on b.match_id=d.match_id and b.bowler=dt.bowler
+;"
+vw_ipl_bowler_inn_brkdwn_inn,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_inn_brkdwn_inn`
+AS   with blr_brk as (
+select match_id,innings,
+bowler,batting_team against,runs_off_bat,wides,noballs,ipl_year,ind_runs,
+ind_wckt,
+case 
+when cast (over_num as numeric) <6 then '1-6'
+when cast (over_num as numeric) between 6 and 13 then '7-13'
+else '14-20'
+end brkdwn,
+dot_ball,
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` where innings<3),
+summ_brk as (select 
+bowler,brkdwn,innings,
+sum(ind_runs) runs,
+count(ind_wckt) wickets, 
+count(distinct match_id) matches,
+count(*)-count(wides)-count(noballs) balls,
+sum(dot_ball) dot_balls,
+case when (count(*)-count(wides)-count(noballs)) =0 then 0 else
+round(100*sum(dot_ball)/(count(*)-count(wides)-count(noballs)),2) end dot_ball_pct
+from blr_brk b
+group by bowler,brkdwn,innings)
+select s.*,
+trunc(balls/6)+ mod(balls,6)/10 as overs,
+case when (trunc(balls/6)+ mod(balls,6)/10) >=1 then round(runs/ (trunc(balls/6)+ mod(balls,6)/10),2) else 0 end as econ
+from summ_brk s;
+;"
+vw_ipl_bat_vs_bowl_year,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bat_vs_bowl_year`
+AS with set_d as (
+select d.bowler,d.ipl_year,d.striker,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler,d.ipl_year,d.striker)
+select summ.* ,ifnull(d.set_wckts,0) set_d ,
+ case when balls =0 then 0 else round(100*runs/balls,2) end SR
+from 
+(
+select 
+ipl_year,striker batsman, bowler,count(distinct match_id) times_faced, sum(runs_off_bat) runs, count(*)-count(wides)-count(noballs) balls, sum(case when runs_off_bat=0 then 1 else 0 end) dot_balls,
+sum(fours ) fours,
+sum(sixes ) sixes, 
+count(ind_wckt) DISMISSED
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT`
+where innings<3
+group by ipl_year,striker, bowler) summ left join set_d d on 
+summ.batsman = d.striker and summ.bowler=d.bowler  and summ.ipl_year=d.ipl_year;"
+vw_ipl_bowler_overall,"CREATE VIEW `my-ipl-data.IPL_DATA.vw_ipl_bowler_overall`
+AS with set_d as (
+select d.bowler,count(*) set_wckts 
+from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` d , `my-ipl-data.IPL_DATA.vw_ipl_batsmen` b
+where b.match_id=d.match_id and b.batsman=d.striker and d.player_dismissed=d.striker and ind_wckt is not null
+and b.balls_faced>=20
+group by d.bowler),
+ovrl as(
+SELECT bowler,
+case sum(wickets) 
+    when 0 then 0
+    else round(sum(runs)/sum(wickets),2) 
+end bowl_avg,
+count(*) innings, 
+sum(runs) RUNS, 
+sum(wickets) wickets, 
+sum(two_wcktlss) two_wcktlss,
+sum(four_wcktlss) four_wcktlss,
+case when (trunc(sum(balls)/6)+mod(sum(balls),6)/10) <1 then 0
+        else round(sum(runs)/(trunc(sum(balls)/6)+mod(sum(balls),6)/10),2) 
+end bowl_econ,
+      trunc(sum(balls)/6)+mod(sum(balls),6)/10  overs,
+       sum(
+        CASE
+        WHEN wickets = 4 THEN
+            1
+        ELSE
+            0
+    END) four_w,
+    sum(dots) dots,
+sum(case when wickets = 5 then 1 else 0 end) five_w,
+ifnull(sum(maiden),0) maidens,
+case when sum(wickets) =0 then 0
+        else round(sum(balls)/sum(wickets),2) end SR,
+        round(100*(sum(dots)/sum(balls)),2) dot_ball_pct
+FROM
+    `my-ipl-data.IPL_DATA.vw_ipl_bowler`  b , (select distinct match_id,ipl_year from `my-ipl-data.IPL_DATA.IPL_DETAIL_INT` ) d 
+ where b.match_id=d.match_id
+     group by bowler)
+     select o.*,ifnull(d.set_wckts,0) set_d  from ovrl o left join set_d d on o.bowler=d.bowler
+
+;"
