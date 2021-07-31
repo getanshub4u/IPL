@@ -13,5 +13,21 @@ The venue for the 2020 season was moved due to the COVID-19 pandemic and games w
 
 This is to analyze below metrics/stats from a Yearwise/Overall and Batsman/Bowler perspective.
 
-INNS: No of Innings Played
-NO: No of innings batsmen wasn't dismissed
+INNS: No of Innings Played.
+NO: No of innings batsman wasn't dismissed.
+HS: Highest Score of the Batsman.
+AVG: Batting/Bowling Average of the player. Batting Avg = the total number of runs they have scored divided by the number of times they have been out 
+	 Bowling Avg = the number of runs they have conceded per wicket taken.
+BF: Balls Faced
+SR: Batting/bowling Strike Rate. Batting SR = Runs scored/bowls faced
+	Bowling SR = the average number of balls bowled per wicket taken
+DOT_%: % of balls faced where batsman wasn't able to score any runs.
+CONV_RATE: % of times batsman was able to convert a score of 30 or more to a score of 50 or more.
+ECON: Bowling Economy = Average Runs given per over.
+Maiden (M): Overs in which no runs were scored.
+0w: Innings in which the bowler bowled atleast 2 overs and went wicketless.
+Partnership Stats: 
+Innings Breakdown Stats: Stats broken down into 3 phases of the match. Poersplay (overs 0-6), middle overs (6-14) and death overs (14-20).
+Player Face off: Batsman's performance gaainst a particular player and vice versa.
+SET_DISM: No. of set batsmen dismissed. Batsman is considered set after facing 20 balls.
+BNDRY_%: % of runs score in boundaries (4s/6s).
