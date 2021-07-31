@@ -11,5 +11,7 @@ The venue for the 2020 season was moved due to the COVID-19 pandemic and games w
 
 # IPL Data Analysis
 
-This is to analyze below metrics from a Yearwise/Overall and Batsman/Bowler perspective.
+This is to analyze below metrics/stats from a Yearwise/Overall and Batsman/Bowler perspective.
 
+INNS: No of Innings Played
+NO: No of innings batsmen wasn't dismissed
