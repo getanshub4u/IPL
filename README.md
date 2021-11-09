@@ -31,3 +31,10 @@ Innings Breakdown Stats: Stats broken down into 3 phases of the match. Poersplay
 Player Face off: Batsman's performance gaainst a particular player and vice versa.
 SET_DISM: No. of set batsmen dismissed. Batsman is considered set after facing 20 balls.
 BNDRY_%: % of runs score in boundaries (4s/6s).
+
+
+# Data Source
+https://cricsheet.org/downloads/#experimental
+We are using below format for our analysis.
+New Format : https://cricsheet.org/downloads/ipl_csv2.zip
+

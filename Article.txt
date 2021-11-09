@@ -1,0 +1,21 @@
+Step 1: Create Google Cloud Storage Bucket
+Create below bucket structure:
+IPL_Landing/
+	compressed/
+	extract/
+		new/
+		old/
+		yaml/
+
+Step 2: Automated pull from cricsheet website
+
+We will create an Google Apps Script application to pull the following formatted files into the 'compressed' folder in the bucket:
+ 1. new 
+ 2. old
+ 3. yaml
+
+Please refer to the App Script folder for respective code. Please remember to enable OAuth Service.  (https://github.com/googleworkspace/apps-script-oauth2)
+
+Step 3: Create Cloud Function to unzip the files.
+
+
