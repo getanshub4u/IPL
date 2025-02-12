@@ -5,13 +5,20 @@ The league was founded by the Board of Control for Cricket in India (BCCI) in 20
 The IPL is the most-attended cricket league in the world and in 2014 was ranked sixth by average attendance among all sports leagues. 
 In 2010, the IPL became the first sporting event in the world to be broadcast live on YouTube. The brand value of the IPL in 2019 was ₹475 billion (US$6.7 billion), according to Duff & Phelps. 
 According to BCCI, the 2015 IPL season contributed ₹11.5 billion (US$160 million) to the GDP of the Indian economy. 
-IPL 2020 set a Massive Viewership Record With 31.57 Million Average Impressions and with an overall consumption increase of 23 per cent from 2019 season.
+IPL 2020 set a Massive Viewership Record With 31.57 Million Average Impressions and with an overall consumption increase of 23% from 2019 season.
 There have been thirteen seasons of the IPL tournament. The current IPL title holders are the Mumbai Indians, who won the 2020 season.
 The venue for the 2020 season was moved due to the COVID-19 pandemic and games were played in the United Arab Emirates.
 
 # IPL Data Analysis
 
-This is to analyze below metrics/stats from a Yearwise/Overall and Batsman/Bowler perspective.
+Using GCP services - BigQuery, Apps Script, Cloud Functions, Cloud Scheduler, GCS and Looker Studio, I have built a fully automated end-to-end ETL/BI solution for ingesting, analyzing and displaying various IPL statistics.
+1. Cloud scheduler triggers the jobs on daily basis during IPL window (~2 months) to pull match data in csv format.
+2. Python script extracts the files and stores in GCS bucket.
+3. BigQuery scheduled data transfer service import the data into bronze IPL_DETAIL table.
+4. Scheduled BQ query cleans, standardizes and loads into silver IPL_DETAIL_INT table.
+5. Around 50 views (please refer to the DDL file) are built on top of IPL_DETAIL_INT and each other to form the gold layer for looker dashboard.
+
+The views analyze below metrics/stats from a Yearwise/Overall and Batsman/Bowler perspective.
 
 INNS: No of Innings Played.
 
