@@ -16,7 +16,7 @@ Using GCP services - BigQuery, Apps Script, Cloud Functions, Cloud Scheduler, GC
 2. Python script extracts the files and stores in GCS bucket.
 3. BigQuery scheduled data transfer service import the data into bronze IPL_DETAIL table.
 4. Scheduled BQ query cleans, standardizes and loads into silver IPL_DETAIL_INT table.
-5. Around 50 views (please refer to the DDL file) are built on top of IPL_DETAIL_INT and each other to form the gold layer for looker dashboard.
+5. Around 50 views ([DDL](https://github.com/getanshub4u/IPL/blob/master/BigQuery/DDL.csv)) are built on top of IPL_DETAIL_INT and each other to form the gold layer for looker dashboard.
 
 The views analyze below metrics/stats from a Yearwise/Overall and Batsman/Bowler perspective.
 
