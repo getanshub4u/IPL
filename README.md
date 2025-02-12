@@ -9,7 +9,7 @@ IPL 2020 set a Massive Viewership Record With 31.57 Million Average Impressions 
 There have been thirteen seasons of the IPL tournament. The current IPL title holders are the Mumbai Indians, who won the 2020 season.
 The venue for the 2020 season was moved due to the COVID-19 pandemic and games were played in the United Arab Emirates.
 
-# IPL Data Analysis
+# IPL Data Analysis ([Dashboard](https://lookerstudio.google.com/s/gqkOq215aWE))
 
 Using GCP services - BigQuery, Apps Script, Cloud Functions, Cloud Scheduler, GCS and Looker Studio, I have built a fully automated end-to-end ETL/BI solution for ingesting, analyzing and displaying various IPL statistics.
 1. Cloud scheduler triggers the jobs on daily basis during IPL window (~2 months) to pull match data in csv format.
@@ -17,6 +17,8 @@ Using GCP services - BigQuery, Apps Script, Cloud Functions, Cloud Scheduler, GC
 3. BigQuery scheduled data transfer service import the data into bronze IPL_DETAIL table.
 4. Scheduled BQ query cleans, standardizes and loads into silver IPL_DETAIL_INT table.
 5. Around 50 views ([DDL](https://github.com/getanshub4u/IPL/blob/master/BigQuery/DDL.csv)) are built on top of IPL_DETAIL_INT and each other to form the gold layer for looker dashboard.
+
+Looker Dashboard [Link](https://lookerstudio.google.com/s/gqkOq215aWE)
 
 The views analyze below metrics/stats from a Yearwise/Overall and Batsman/Bowler perspective.
 
